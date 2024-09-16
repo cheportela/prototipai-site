@@ -124,7 +124,7 @@ else
     echo_success "Login no Heroku realizado com sucesso."
 fi
 
-# Passo 5: Criar o Aplicativo no Heroku com o Buildpack Static
+# Passo 5: Criar o Aplicativo no Heroku com o Buildpack de NGINX
 
 # Perguntar ao usuário se deseja especificar um nome para o aplicativo
 read -p "Deseja especificar um nome para o aplicativo no Heroku? (s/n): " specify_name
@@ -132,32 +132,56 @@ read -p "Deseja especificar um nome para o aplicativo no Heroku? (s/n): " specif
 if [[ "$specify_name" =~ ^[Ss]$ ]]
 then
     read -p "Digite o nome desejado para o aplicativo: " app_name
-    # Criar o aplicativo com o nome especificado e buildpack estático
-    heroku create "$app_name" --buildpack https://github.com/heroku/heroku-buildpack-static.git
+    # Criar o aplicativo com o nome especificado e buildpack NGINX
+    heroku create "$app_name" --buildpack https://github.com/heroku/heroku-buildpack-nginx.git
     if [ $? -ne 0 ]; then
         echo_error "Falha ao criar o aplicativo no Heroku. Verifique se o nome está disponível."
         exit 1
     fi
 else
     # Criar o aplicativo com nome gerado automaticamente
-    heroku create --buildpack https://github.com/heroku/heroku-buildpack-static.git
+    heroku create --buildpack https://github.com/heroku/heroku-buildpack-nginx.git
     if [ $? -ne 0 ]; then
         echo_error "Falha ao criar o aplicativo no Heroku."
         exit 1
     fi
 fi
 
-# Obter o nome do aplicativo criado
-heroku_app_url=$(git remote get-url heroku 2>/dev/null)
-if [ -z "$heroku_app_url" ]; then
-    # Se o remoto 'heroku' não existir, adicionar
-    heroku_app_url=$(heroku git:remote -a "$app_name" 2>/dev/null)
-fi
+# Obter a URL do aplicativo criado
+app_url=$(heroku apps:info -s | grep web_url | cut -d= -f2)
+app_name=$(heroku apps:info -s | grep app | cut -d= -f2)
 
-echo_success "Aplicativo criado no Heroku: $(heroku apps:info --json | jq -r '.app.name')"
-echo_info "URL do aplicativo: https://$(heroku apps:info --json | jq -r '.app.web_url')"
+echo_success "Aplicativo criado no Heroku: $app_name"
+echo_info "URL do aplicativo: $app_url"
 
-# Passo 6: Fazer o Deploy para o Heroku
+# Passo 6: Criar o Arquivo de Configuração do NGINX
+
+echo_info "Criando o arquivo 'config/nginx.conf.erb'..."
+
+mkdir -p config
+
+cat > config/nginx.conf.erb <<EOL
+worker_processes 1;
+
+events { worker_connections 1024; }
+
+http {
+    server {
+        listen <%= ENV["PORT"] %>;
+
+        root <%= ENV["ROOT"] || "public" %>;
+        index index.html;
+
+        location / {
+            try_files \$uri \$uri/ =404;
+        }
+    }
+}
+EOL
+
+echo_success "Arquivo 'config/nginx.conf.erb' criado."
+
+# Passo 7: Fazer o Deploy para o Heroku
 
 # Detectar a branch principal (main ou master)
 current_branch=$(git branch --show-current)
@@ -179,10 +203,7 @@ fi
 
 echo_success "Deploy realizado com sucesso no Heroku!"
 
-# Passo 7: Acessar o Aplicativo
-
-# Obter a URL do aplicativo
-app_url=$(heroku apps:info -s | grep web_url | cut -d= -f2)
+# Passo 8: Acessar o Aplicativo
 
 echo_info "Seu aplicativo está disponível em: $app_url"
 
