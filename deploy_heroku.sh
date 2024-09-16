@@ -124,40 +124,33 @@ else
     echo_success "Login no Heroku realizado com sucesso."
 fi
 
-# Passo 5: Criar o Aplicativo no Heroku com o Buildpack de NGINX
+# Passo 5: Alterar a Stack para heroku-20
 
-# Perguntar ao usuário se deseja especificar um nome para o aplicativo
-read -p "Deseja especificar um nome para o aplicativo no Heroku? (s/n): " specify_name
-
-if [[ "$specify_name" =~ ^[Ss]$ ]]
-then
-    read -p "Digite o nome desejado para o aplicativo: " app_name
-    # Criar o aplicativo com o nome especificado e buildpack NGINX
-    heroku create "$app_name" --buildpack https://github.com/heroku/heroku-buildpack-nginx.git
-    if [ $? -ne 0 ]; then
-        echo_error "Falha ao criar o aplicativo no Heroku. Verifique se o nome está disponível."
-        exit 1
-    fi
-else
-    # Criar o aplicativo com nome gerado automaticamente
-    heroku create --buildpack https://github.com/heroku/heroku-buildpack-nginx.git
-    if [ $? -ne 0 ]; then
-        echo_error "Falha ao criar o aplicativo no Heroku."
-        exit 1
-    fi
+echo_info "Alterando a stack para 'heroku-20'..."
+heroku stack:set heroku-20 -a prototipai-site
+if [ $? -ne 0 ]; then
+    echo_error "Falha ao alterar a stack para 'heroku-20'."
+    exit 1
 fi
+echo_success "Stack alterada para 'heroku-20'."
 
-# Obter a URL do aplicativo criado
-app_url=$(heroku apps:info -s | grep web_url | cut -d= -f2)
-app_name=$(heroku apps:info -s | grep app | cut -d= -f2)
+# Passo 6: Remover o Buildpack Estático Antigo e Adicionar o Buildpack de NGINX
 
-echo_success "Aplicativo criado no Heroku: $app_name"
-echo_info "URL do aplicativo: $app_url"
+echo_info "Removendo o buildpack estático (se existir)..."
+heroku buildpacks:remove https://github.com/heroku/heroku-buildpack-static.git -a prototipai-site 2>/dev/null
+echo_success "Buildpack estático removido (se existia)."
 
-# Passo 6: Criar o Arquivo de Configuração do NGINX
+echo_info "Adicionando o buildpack de NGINX..."
+heroku buildpacks:add https://github.com/heroku/heroku-buildpack-nginx.git -a prototipai-site
+if [ $? -ne 0 ]; then
+    echo_error "Falha ao adicionar o buildpack de NGINX."
+    exit 1
+fi
+echo_success "Buildpack de NGINX adicionado."
+
+# Passo 7: Criar o Arquivo de Configuração do NGINX
 
 echo_info "Criando o arquivo 'config/nginx.conf.erb'..."
-
 mkdir -p config
 
 cat > config/nginx.conf.erb <<EOL
@@ -181,7 +174,7 @@ EOL
 
 echo_success "Arquivo 'config/nginx.conf.erb' criado."
 
-# Passo 7: Fazer o Deploy para o Heroku
+# Passo 8: Fazer o Deploy para o Heroku
 
 # Detectar a branch principal (main ou master)
 current_branch=$(git branch --show-current)
@@ -203,7 +196,10 @@ fi
 
 echo_success "Deploy realizado com sucesso no Heroku!"
 
-# Passo 8: Acessar o Aplicativo
+# Passo 9: Acessar o Aplicativo
+
+# Obter a URL do aplicativo
+app_url=$(heroku apps:info -s -a prototipai-site | grep web_url | cut -d= -f2)
 
 echo_info "Seu aplicativo está disponível em: $app_url"
 
